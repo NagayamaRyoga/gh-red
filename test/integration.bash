@@ -52,7 +52,7 @@ gh-red
 }
 { # jargon
   test-command jargon
-  jargon --version
+  jargon --help
   [[ -f "$GHRED_DATA_HOME/packages/github.com/NagayamaRyoga/jargon/jargon.zsh" ]]
 }
 { # direnv
