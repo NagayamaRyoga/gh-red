@@ -17,7 +17,7 @@ $ export FPATH="${XDG_DATA_HOME:-$HOME/.local/share}/gh-red/completions:$FPATH"
 $ export MANPATH="${XDG_DATA_HOME:-$HOME/.local/share}/gh-red/man:$MANPATH"
 ```
 
-Install as [`gh`](github.com/cli/cli) extension:
+Install as [`gh`](https://github.com/cli/cli) extension:
 
 ```sh
 $ gh extension install NagayamaRyoga/gh-red
