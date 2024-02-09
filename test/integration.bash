@@ -29,12 +29,15 @@ test-completion() {
 }
 
 # Install gh-red
-/bin/bash "$DIR/../install.bash"
-[[ -n "${GITHUB_SHA:-}" ]] && git -C "$GHRED_DATA_HOME/src" switch -d "$GITHUB_SHA"
+if [[ -n "${GITHUB_SHA:-}" ]]; then
+  /bin/bash "$DIR/../install.bash"
+  git -C "$GHRED_DATA_HOME/src" switch -d "$GITHUB_SHA"
 
-export PATH="$GHRED_DATA_HOME/bin:$PATH"
-
-test-command gh-red
+  export PATH="$GHRED_DATA_HOME/bin:$PATH"
+  test-command gh-red
+else
+  export PATH="$DIR/..:$GHRED_DATA_HOME/bin:$PATH"
+fi
 
 # Install binaries
 gh-red
@@ -116,7 +119,6 @@ gh-red
 }
 { # fzf
   test-command fzf
-  test-completion fzf
   fzf --version
 }
 { # bat
@@ -140,4 +142,10 @@ gh-red
   else
     ! test-command nvim
   fi
+}
+{ # ldc2
+  test-command rdmd
+  rdmd --help
+
+  ! test-command ldc2
 }

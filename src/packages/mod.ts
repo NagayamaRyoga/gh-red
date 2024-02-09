@@ -1,5 +1,5 @@
-import { expandGlob } from "std/fs/mod.ts";
-import { basename, dirname } from "std/path/mod.ts";
+import { expandGlob } from "../deps/std/fs.ts";
+import { basename, dirname, extname } from "../deps/std/path.ts";
 import {
   downloadReleasedAsset,
   extractArchive,
@@ -10,12 +10,14 @@ import {
   Config,
   ExecutableConfig,
   RenameConfig,
+  Shell,
   ToolConfig,
 } from "../config/mod.ts";
 import {
   fetchLatestReleaseTag,
   fetchReleasedArtifactURLs,
 } from "../github/mod.ts";
+import { build$, CommandBuilder } from "../deps/dax.ts";
 import { getPackageDir } from "../path.ts";
 import { State, ToolState } from "../state/mod.ts";
 import { InstallationState, View } from "../view/mod.ts";
@@ -24,7 +26,17 @@ type InstallationStateUpdateHandler = (state: InstallationState) => void;
 
 async function isDirectory(path: string): Promise<boolean> {
   try {
-    return (await Deno.stat(path)).isDirectory;
+    const stat = await Deno.stat(path);
+    return stat.isDirectory;
+  } catch (_err) {
+    return false;
+  }
+}
+
+async function isExecutable(path: string): Promise<boolean> {
+  try {
+    const stat = await Deno.stat(path);
+    return stat.isFile && stat.mode !== null && (stat.mode & 0o111) !== 0;
   } catch (_err) {
     return false;
   }
@@ -102,7 +114,7 @@ async function renameFiles(
 ) {
   onUpdate({ type: "renaming_files" });
 
-  for (const { from, to } of renames) {
+  for (const { from, to, chmod } of renames) {
     const entries = expandGlob(from, {
       root: packageDir,
       includeDirs: true,
@@ -113,6 +125,10 @@ async function renameFiles(
 
       await Deno.mkdir(dirname(toPath), { recursive: true });
       await Deno.rename(fromPath, toPath);
+
+      if (chmod !== undefined) {
+        await Deno.chmod(toPath, chmod);
+      }
     }
   }
 }
@@ -121,8 +137,26 @@ function defaultExecutables(
   _user: string,
   repo: string,
 ): ReadonlyArray<ExecutableConfig> {
+  const isWindows = Deno.build.os === "windows" ||
+    (Deno.build.os === "linux" && Deno.env.has("WSLENV"));
+
   return [
-    { glob: `**/${repo}`, as: repo },
+    {
+      glob: "**/*",
+      async match({ name, path }) {
+        if (
+          (name === repo) ||
+          (isWindows && name.endsWith(".exe"))
+        ) {
+          return true;
+        }
+
+        return extname(name) === "" && await isExecutable(path);
+      },
+    },
+    {
+      glob: "**/bin/*",
+    },
   ];
 }
 
@@ -142,23 +176,33 @@ async function linkExecutables(
   const executables = config.executables ??
     defaultExecutables(user, repo);
 
-  for (const { glob, exclude, as } of executables) {
+  for (const { glob, exclude, match, as } of executables) {
     const entries = expandGlob(glob, {
       root: packageDir,
       includeDirs: false,
       exclude: exclude !== undefined ? [...exclude] : undefined,
     });
-    for await (const { path } of entries) {
-      bin[as ?? basename(path)] = path;
+    for await (const entry of entries) {
+      if (match === undefined || await match(entry)) {
+        bin[as ?? entry.name] = entry.path;
+      }
     }
   }
 
   if (config.onDownload !== undefined) {
+    const commandBuilder = new CommandBuilder()
+      .cwd(packageDir);
+
+    const $ = build$({
+      commandBuilder,
+    });
+
     await config.onDownload({
       name: config.name,
       tag,
       packageDir,
       bin,
+      $,
     }).catch((err) => {
       console.error(err);
     });
@@ -177,16 +221,57 @@ async function linkExecutables(
 }
 
 function defaultCompletions(
+  shell: Shell,
   _user: string,
   _repo: string,
 ): ReadonlyArray<CompletionConfig> {
+  function shellExt(shell: Shell): string {
+    switch (shell) {
+      case "zsh":
+        return ".zsh";
+      case "bash":
+        return ".bash";
+      case "fish":
+        return ".fish";
+      case "powershell":
+        return ".ps1";
+      default:
+        return "";
+    }
+  }
+
   return [
-    { glob: `**/_*`, exclude: ["**/_*.*"] },
+    {
+      glob: `**/_*`,
+      exclude: ["**/_*.*"],
+    },
+    {
+      glob: `**/{autocomplete,complete,completion,completions}/*${
+        shellExt(shell)
+      }`,
+      exclude: [],
+    },
   ];
+}
+
+function defaultCompletionName(path: string): string {
+  let name = basename(path);
+
+  const dotIndex = name.indexOf(".");
+  if (dotIndex > 0) {
+    name = name.slice(0, dotIndex);
+  }
+
+  if (name.startsWith("_")) {
+    return name;
+  }
+
+  return `_${name}`;
 }
 
 async function linkCompletions(
   config: ToolConfig,
+  shell: Shell,
   user: string,
   repo: string,
   packageDir: string,
@@ -198,7 +283,7 @@ async function linkCompletions(
   const files: Record<string, string> = {};
 
   const completions = config.completions ??
-    defaultCompletions(user, repo);
+    defaultCompletions(shell, user, repo);
 
   for (const { glob, exclude, as } of completions) {
     const entries = expandGlob(glob, {
@@ -207,7 +292,10 @@ async function linkCompletions(
       exclude: exclude !== undefined ? [...exclude] : undefined,
     });
     for await (const { path } of entries) {
-      files[as ?? basename(path)] = path;
+      const name = as ?? defaultCompletionName(path);
+      if (!(name in files)) {
+        files[name] = path;
+      }
     }
   }
 
@@ -227,7 +315,7 @@ function defaultManuals(
   _repo: string,
 ): ReadonlyArray<CompletionConfig> {
   return [
-    { glob: `**/*.[1-9]` },
+    { glob: `**/*.[1-9]`, exclude: ["**/*.so.*"] },
   ];
 }
 
@@ -253,7 +341,10 @@ async function linkManuals(
       exclude: exclude !== undefined ? [...exclude] : undefined,
     });
     for await (const { path } of entries) {
-      files[basename(path)] = path;
+      const name = basename(path);
+      if (!(name in files)) {
+        files[name] = path;
+      }
     }
   }
 
@@ -289,6 +380,7 @@ async function installPackage(
   completionsDir: string,
   manualsDir: string,
   config: ToolConfig,
+  shell: Shell,
   state: ToolState | undefined,
   onUpdate: InstallationStateUpdateHandler,
 ): Promise<InstallationResult> {
@@ -334,6 +426,7 @@ async function installPackage(
 
     await linkCompletions(
       config,
+      shell,
       user,
       repo,
       packageDir,
@@ -358,6 +451,38 @@ async function installPackage(
   }
 }
 
+function loginShell(): Shell {
+  function defaultShell(): Shell {
+    switch (Deno.build.os) {
+      case "windows":
+        return "powershell";
+      case "darwin":
+        return "zsh";
+      default:
+        return "bash";
+    }
+  }
+
+  const shellPath = Deno.env.get("SHELL");
+  if (shellPath === undefined) {
+    return defaultShell();
+  }
+
+  const shellName = basename(shellPath);
+  switch (shellName) {
+    case "zsh":
+      return "zsh";
+    case "bash":
+      return "bash";
+    case "fish":
+      return "fish";
+    case "pwsh":
+      return "powershell";
+    default:
+      return defaultShell();
+  }
+}
+
 export async function installAllPackages(
   tempDir: string,
   binDir: string,
@@ -377,6 +502,8 @@ export async function installAllPackages(
       currentState.tools.map((state) => [state.name, state]),
     );
 
+    const shell = config.shell ?? loginShell();
+
     const results = await Promise.all(
       config.tools.map(
         async (
@@ -393,6 +520,7 @@ export async function installAllPackages(
             completionsDir,
             manualsDir,
             toolConfig,
+            shell,
             toolState,
             (state) => view.update(toolConfig.name, state),
           );

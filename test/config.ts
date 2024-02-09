@@ -1,62 +1,24 @@
 import { defineConfig } from "../src/config/types.ts";
 
-async function saveCommandOutput(
-  to: string,
-  cmd: string,
-  ...args: string[]
-) {
-  const { stdout } = await new Deno.Command(cmd, {
-    args,
-    stderr: "inherit",
-  }).output();
-
-  await Deno.writeFile(to, stdout);
-}
-
-async function saveRemoteFile(
-  to: string,
-  from: string,
-) {
-  const res = await fetch(new URL(from));
-  if (res.body !== null) {
-    await Deno.writeFile(to, res.body);
-  }
-}
-
 export default defineConfig({
+  shell: "zsh",
   tools: [
     {
       name: "rossmacarthur/sheldon",
-      completions: [
-        {
-          glob: "completions/sheldon.zsh",
-          as: "_sheldon",
-        },
-      ],
     },
     {
       name: "NagayamaRyoga/jargon",
-      async onDownload({ packageDir, bin }) {
-        await saveCommandOutput(
-          `${packageDir}/jargon.zsh`,
-          bin.jargon,
-          "init",
-        );
+      async onDownload({ bin: { jargon }, $ }) {
+        await $`${jargon} init >jargon.zsh`;
       },
     },
     {
       name: "direnv/direnv",
       rename: [
-        { from: "direnv*", to: "direnv" },
+        { from: "direnv*", to: "direnv", chmod: 0o755 },
       ],
-      async onDownload({ packageDir, bin }) {
-        await Deno.chmod(bin.direnv, 0o755);
-        await saveCommandOutput(
-          `${packageDir}/direnv.zsh`,
-          bin.direnv,
-          "hook",
-          "zsh",
-        );
+      async onDownload({ bin: { direnv }, $ }) {
+        await $`${direnv} hook zsh >direnv.zsh`;
       },
     },
     {
@@ -67,9 +29,6 @@ export default defineConfig({
     },
     {
       name: "BurntSushi/ripgrep",
-      executables: [
-        { glob: "**/rg", as: "rg" },
-      ],
     },
     {
       name: "x-motemen/ghq",
@@ -79,52 +38,32 @@ export default defineConfig({
     },
     {
       name: "cli/cli",
-      executables: [
-        { glob: "**/gh", as: "gh" },
-      ],
-      async onDownload({ packageDir, bin }) {
-        await saveCommandOutput(
-          `${packageDir}/_gh`,
-          bin.gh,
-          "completion",
-          "--shell",
-          "zsh",
-        );
+      async onDownload({ bin: { gh }, $ }) {
+        await $`${gh} completion --shell zsh >_gh`;
       },
     },
     {
       name: "eza-community/eza",
       enabled: Deno.build.os !== "darwin",
-      async onDownload({ packageDir }) {
-        await saveRemoteFile(
-          `${packageDir}/_eza`,
+      async onDownload({ packageDir, $ }) {
+        await $.request(
           "https://raw.githubusercontent.com/eza-community/eza/main/completions/zsh/_eza",
-        );
+        ).pipeToPath(`${packageDir}/_eza`);
       },
     },
     {
       name: "mikefarah/yq",
       rename: [
-        { from: "yq_*", to: "yq" },
+        { from: "yq_*", to: "yq", chmod: 0o755 },
       ],
-      async onDownload({ packageDir, bin }) {
-        await saveCommandOutput(
-          `${packageDir}/_yq`,
-          bin.yq,
-          "shell-completion",
-          "zsh",
-        );
+      async onDownload({ bin: { yq }, $ }) {
+        await $`${yq} shell-completion zsh >_yq`;
       },
     },
     {
       name: "rhysd/hgrep",
-      async onDownload({ packageDir, bin }) {
-        await saveCommandOutput(
-          `${packageDir}/_hgrep`,
-          bin.hgrep,
-          "--generate-completion-script",
-          "zsh",
-        );
+      async onDownload({ bin: { hgrep }, $ }) {
+        await $`${hgrep} --generate-completion-script zsh >_hgrep`;
       },
     },
     {
@@ -133,32 +72,19 @@ export default defineConfig({
     {
       name: "dbrgn/tealdeer",
       rename: [
-        { from: "tealdeer*", to: "tldr" },
+        { from: "tealdeer*", to: "tldr", chmod: 0o755 },
       ],
-      executables: [
-        { glob: "tldr", as: "tldr" },
-      ],
-      async onDownload({ packageDir }) {
-        await saveRemoteFile(
-          `${packageDir}/_tldr`,
+      async onDownload({ packageDir, $ }) {
+        await $.request(
           "https://github.com/dbrgn/tealdeer/releases/latest/download/completions_zsh",
-        );
+        ).pipeToPath(`${packageDir}/_tldr`);
       },
     },
     {
       name: "junegunn/fzf",
-      async onDownload({ packageDir }) {
-        await saveRemoteFile(
-          `${packageDir}/_fzf`,
-          "https://raw.githubusercontent.com/junegunn/fzf/master/shell/completion.zsh",
-        );
-      },
     },
     {
       name: "sharkdp/bat",
-      completions: [
-        { glob: "*/autocomplete/bat.zsh", as: "_bat" },
-      ],
     },
     {
       name: "sharkdp/fd",
@@ -169,18 +95,11 @@ export default defineConfig({
     {
       name: "neovim/neovim",
       enabled: Deno.build.arch === "x86_64",
-      use: (() => {
-        switch (Deno.build.os) {
-          case "darwin":
-            return "nvim-macos.tar.gz";
-          case "linux":
-            return "nvim-linux64.tar.gz";
-          default:
-            return undefined;
-        }
-      })(),
+    },
+    {
+      name: "ldc-developers/ldc",
       executables: [
-        { glob: "**/nvim", as: "nvim" },
+        { glob: "**/rdmd" },
       ],
     },
   ],

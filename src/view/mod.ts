@@ -1,5 +1,5 @@
-import { basename } from "std/path/mod.ts";
-import { MultiProgressBar } from "progress/mod.ts";
+import { basename } from "../deps/std/path.ts";
+import { MultiProgressBar } from "../deps/progress.ts";
 import { ToolConfig } from "../config/mod.ts";
 
 export type InstallationState = Readonly<
@@ -172,7 +172,7 @@ export class ProgressView implements View {
 }
 
 export function createView(): View {
-  if (Deno.isatty(Deno.stdout.rid)) {
+  if (Deno.stdout.isTerminal()) {
     return new ProgressView();
   } else {
     return new ConsoleView();

@@ -1,6 +1,12 @@
+import { $Type } from "../deps/dax.ts";
+import { WalkEntry } from "../deps/std/fs.ts";
+
 export type Config = Readonly<{
+  shell?: Shell;
   tools: ReadonlyArray<ToolConfig>;
 }>;
+
+export type Shell = "zsh" | "bash" | "fish" | "powershell";
 
 export type ToolConfig = Readonly<{
   name: `${string}/${string}`; // <user>/<repo>
@@ -18,11 +24,13 @@ export type ToolConfig = Readonly<{
 export type RenameConfig = Readonly<{
   from: string;
   to: string;
+  chmod?: number | undefined;
 }>;
 
 export type ExecutableConfig = Readonly<{
   glob: string;
   exclude?: ReadonlyArray<string> | undefined;
+  match?: (entry: WalkEntry) => boolean | Promise<boolean> | undefined;
   as?: string | undefined;
 }>;
 
@@ -42,6 +50,7 @@ export type DownloadEvent = {
   tag: string;
   packageDir: string;
   bin: Readonly<Record<string, string>>;
+  $: $Type;
 };
 
 export function defineConfig(config: Config): Config {

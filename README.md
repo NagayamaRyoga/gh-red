@@ -4,7 +4,7 @@ GitHub Releases binaries installer.
 
 ## Requirements
 
-- [Deno](https://deno.com/) v1.37 or later
+- [Deno](https://deno.com/) v1.40 or later
 - (tar)
 - (unzip)
 
@@ -31,7 +31,7 @@ $ export MANPATH="${XDG_DATA_HOME:-$HOME/.local/share}/gh-red/man:$MANPATH"
 `~/.config/gh-red/config.ts`:
 
 ```ts
-import { defineConfig } from "https://raw.githubusercontent.com/NagayamaRyoga/gh-red/main/src/config.ts";
+import { defineConfig } from "https://raw.githubusercontent.com/NagayamaRyoga/gh-red/main/src/config/types.ts";
 
 export default defineConfig({
   tools: [
@@ -56,6 +56,12 @@ export default defineConfig({
         { glob: "*/autocomplete/bat.zsh", as: "_bat" },
       ],
     },
+    {
+      name: "cli/cli",
+      async onDownload({ bin: { gh }, $ }) {
+        await $`${gh} completion --shell zsh >_gh`;
+      },
+    },
   ],
 });
 ```
@@ -66,6 +72,7 @@ Installing junegunn/fzf...
 Installing BurntSushi/ripgrep...
 Installing direnv/direnv...
 Installing sharkdp/bat...
+Installing cli/cli...
 ...
 
 $ where fzf
