@@ -47,13 +47,13 @@ export default defineConfig({
     {
       name: "direnv/direnv",
       rename: [
-        { from: "direnv*", to: "direnv" },
+        { from: "direnv*", to: "direnv", chmod: 0o755 },
       ],
     },
     {
       name: "sharkdp/bat",
       completions: [
-        { glob: "*/autocomplete/bat.zsh", as: "_bat" },
+        { glob: "**/autocomplete/bat.zsh", as: "_bat" },
       ],
     },
     {
